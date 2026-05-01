@@ -1,17 +1,16 @@
 import requests
 import pandas as pd
 import ta
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = "8557405091:AAHlCI4JwcDwUQJ-QWqqe0WDmSUdMg1u7kg"
+TOKEN = os.getenv("8557405091:AAHlCI4JwcDwUQJ-QWqqe0WDmSUdMg1u7kg")
 
-# Convert pair format (USD/JPY → USDJPY)
-def format_symbol(pair):
-    return pair.replace("/", "").upper()
-
-# Fetch Binance candles
-def get_candles(symbol, interval="1m", limit=100):
+# =========================
+# FETCH DATA
+# =========================
+def get_candles(symbol, interval="1m", limit=150):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     data = requests.get(url).json()
 
@@ -23,8 +22,10 @@ def get_candles(symbol, interval="1m", limit=100):
     df["close"] = df["close"].astype(float)
     return df
 
-# Signal logic (RSI + EMA)
-def generate_signal(df):
+# =========================
+# SIGNAL ENGINE
+# =========================
+def analyze(df):
     df['ema9'] = ta.trend.ema_indicator(df['close'], window=9)
     df['ema21'] = ta.trend.ema_indicator(df['close'], window=21)
     df['ema50'] = ta.trend.ema_indicator(df['close'], window=50)
@@ -34,84 +35,128 @@ def generate_signal(df):
     last = df.iloc[-1]
     prev = df.iloc[-2]
 
-    # BUY
-    if (
-        last['ema50'] > last['ema200'] and
-        last['rsi'] < 35 and
-        prev['ema9'] < prev['ema21'] and
-        last['ema9'] > last['ema21']
-    ):
-        return "BUY"
+    score = 0
 
-    # SELL
-    elif (
-        last['ema50'] < last['ema200'] and
-        last['rsi'] > 65 and
-        prev['ema9'] > prev['ema21'] and
-        last['ema9'] < last['ema21']
-    ):
-        return "SELL"
+    # Trend
+    if last['ema50'] > last['ema200']:
+        trend = "UP"
+        score += 1
+    else:
+        trend = "DOWN"
+        score += 1
 
-    return "NO SIGNAL"
+    # RSI
+    if last['rsi'] < 35:
+        score += 1
+    if last['rsi'] > 65:
+        score += 1
 
-# Start command
+    # EMA crossover
+    if prev['ema9'] < prev['ema21'] and last['ema9'] > last['ema21']:
+        score += 2
+        signal = "BUY"
+    elif prev['ema9'] > prev['ema21'] and last['ema9'] < last['ema21']:
+        score += 2
+        signal = "SELL"
+    else:
+        signal = "WAIT"
+
+    confidence = min(score * 20, 100)
+
+    return signal, confidence, trend, round(last['rsi'], 2)
+
+# =========================
+# MULTI SIGNALS
+# =========================
+def generate_multiple_signals(df):
+    signals = []
+
+    for i in range(5):
+        signal, conf, trend, rsi = analyze(df)
+
+        if signal != "WAIT":
+            signals.append((signal, conf, trend, rsi))
+
+    return signals
+
+# =========================
+# FORMAT OUTPUT
+# =========================
+def format_signals(pair, signals):
+    if not signals:
+        return f"❌ No strong signals for {pair}"
+
+    msg = f"📊 {pair} SIGNALS\n\n"
+
+    for i, (sig, conf, trend, rsi) in enumerate(signals):
+        msg += f"""
+{i+1}. {sig}
+Trend: {trend}
+RSI: {rsi}
+Confidence: {conf}%
+"""
+
+    return msg
+
+# =========================
+# TELEGRAM COMMANDS
+# =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📊 Send currency pair like:\n\nUSD/JPY\nBTC/USDT"
+        "📊 Send pair like:\nBTC/USDT\nETH/USDT"
     )
 
-# Handle user input
+# USER REQUEST SIGNAL
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    pair = update.message.text.strip()
-    symbol = format_symbol(pair)
-
+    pair = update.message.text.upper().replace("/", "")
+    
     try:
-        df = get_candles(symbol)
-        signal = generate_signal(df)
+        df = get_candles(pair)
 
-        msg = f"""
-📊 Pair: {pair}
-⏱ Timeframe: 1 Minute
-
-Signal: {signal}
-"""
+        signals = generate_multiple_signals(df)
+        msg = format_signals(pair, signals)
 
         await update.message.reply_text(msg)
 
-    except Exception as e:
-        await update.message.reply_text("❌ Invalid pair or data not available")
+    except:
+        await update.message.reply_text("❌ Invalid pair")
 
-# Auto signals every X minutes
+# =========================
+# AUTO SIGNAL SYSTEM
+# =========================
 async def auto_signals(context: ContextTypes.DEFAULT_TYPE):
     pairs = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
     for pair in pairs:
         try:
             df = get_candles(pair)
-            signal = generate_signal(df)
+            signal, conf, trend, rsi = analyze(df)
 
-            if signal != "NO SIGNAL":
+            if signal != "WAIT" and conf > 60:
                 msg = f"""
 🚨 AUTO SIGNAL 🚨
 
-📊 Pair: {pair}
-⏱ Timeframe: 1m
-
+📊 {pair}
 Signal: {signal}
+Trend: {trend}
+RSI: {rsi}
+Confidence: {conf}%
 """
                 await context.bot.send_message(chat_id=context.job.chat_id, text=msg)
 
         except:
             pass
 
-# Main function
+# =========================
+# MAIN
+# =========================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Auto signals every 60 seconds
+    # Auto signals every 60 sec
     app.job_queue.run_repeating(auto_signals, interval=60, first=10)
 
     print("Bot running...")
