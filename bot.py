@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import random
 
-TOKEN = "YOUR_NEW_TOKEN"
+TOKEN = "8557405091:AAHlCI4JwcDwUQJ-QWqqe0WDmSUdMg1u7kg"
 
 def analyze():
     signal = random.choice(["BUY", "SELL"])
