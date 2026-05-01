@@ -3,12 +3,11 @@ logging.basicConfig(level=logging.INFO)
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from telegram.request import HTTPXRequest
 import random
-import os
 
-TOKEN = os.getenv("TOKEN")
+TOKEN = "YOUR_NEW_TOKEN"
 
+# ✅ FIXED FUNCTION
 def analyze():
     signal = random.choice(["BUY", "SELL"])
     trend = random.choice(["UP", "DOWN"])
@@ -28,12 +27,9 @@ async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await update.message.reply_text(msg)
 
-request = HTTPXRequest(connect_timeout=30, read_timeout=30)
-
-app = ApplicationBuilder().token(TOKEN).request(request).build()
+app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("signal", signal))
 
-print("Bot running...")
 app.run_polling()
