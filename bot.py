@@ -7,7 +7,6 @@ import random
 
 TOKEN = "YOUR_NEW_TOKEN"
 
-# ✅ FIXED FUNCTION
 def analyze():
     signal = random.choice(["BUY", "SELL"])
     trend = random.choice(["UP", "DOWN"])
