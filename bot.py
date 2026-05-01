@@ -5,7 +5,7 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = os.getenv("8557405091:AAHlCI4JwcDwUQJ-QWqqe0WDmSUdMg1u7kg")
+TOKEN = "8557405091:AAHlCI4JwcDwUQJ-QWqqe0WDmSUdMg1u7kg"
 
 # =========================
 # FETCH DATA
